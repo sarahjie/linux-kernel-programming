@@ -53,10 +53,10 @@ static void update_cpu_time(struct work_struct *work) {
 	spin_unlock_irqrestore(&lock_sp, flags);
 }
 
-DECLARE_WORK(mp1_work, update_cpu_time);
+DECLARE_WORK(mp1_proc, update_cpu_time);
 
 static void enq_work(struct timer_list *timer) {
-	queue_work(wq, &mp1_work);
+	queue_work(wq, &mp1_proc);
 	if(mod_timer(&my_timer, jiffies + msecs_to_jiffies(5000)) != 0){
 		printk("mod timer failed at enqueue \n");
 	}
