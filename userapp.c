@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 	int i, random;
 	unsigned long int n;
 	time_t start = time(NULL);
-	while (time(NULL) - start < 5) {
+	while (time(NULL) - start < 10) {
 		random = rand() % 12;
 		n = 1;
 		for (i = 1; i <= random; i++)
