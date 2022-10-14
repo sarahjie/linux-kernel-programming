@@ -20,7 +20,7 @@ MODULE_DESCRIPTION("CS-423 MP1");
 #define DEBUG 1
 
 #define SZ 1024
-static char kernel_buf[SZ];
+//static char kernel_buf[SZ];
 
 static struct proc_dir_entry *dir_mp1;
 static struct proc_dir_entry *status_file;
@@ -46,7 +46,6 @@ static void update_cpu_time(struct work_struct *work) {
 			proc->time_use = cpu_time;
 		}
 		else {
-			printk("list del pid=%d", proc->pid);
 			list_del(&proc->list_head_struct);
 			kfree(proc);
 		}
@@ -68,6 +67,9 @@ static ssize_t mp1_read(struct file *filp, char __user *user_buf, size_t size, l
 	
         
 	loff_t offset = *off;
+	#ifdef DEBUG
+		printk("offset : %lld\n", offset);
+	#endif
 	size_t remaining;
 	unsigned long flags;
 	struct pid_time_struct *proc;
@@ -79,54 +81,59 @@ static ssize_t mp1_read(struct file *filp, char __user *user_buf, size_t size, l
 		return -EINVAL;
 	}
 
-	pr_info("proc file read\n");
+	//pr_info("proc file read\n");
     
 	if (offset < 0)
 		return -EINVAL;
 	
-
+	if (offset > 0){
+		return 0;
+	}
+	
 	if (offset >= SZ || size == 0)
 		return 0;
 
 	if (size > SZ - offset)
 		size = SZ - offset;
+
 	
 	
 	ssize_t list_size=0;
 	spin_lock_irqsave(&lock_sp, flags);
-	list_for_each_entry(proc, &list_head_mp1, list_head_struct) {
+	list_for_each_entry(proc, &list_head_mp1, list_head_struct)
 		list_size++;
-		printk("list item pid=%d", proc->pid);
-	}
 	spin_unlock_irqrestore(&lock_sp, flags);
-	printk("list size = %d\n", list_size);
+
+	#ifdef DEBUG
+		printk("list_size: %d\n", list_size);
+	#endif
 	
-	list_size *= MAX_STR_LEN;
-	char* kbuf = kmalloc(list_size, GFP_KERNEL);
+	char* kbuf = kmalloc(size, GFP_KERNEL);
 	if (kbuf == NULL) {
 		#ifdef DEBUG
 		printk("read buffer error\n");
 		#endif
-		//spin_unlock_irqrestore(&lock_sp, flags);
 		return -ENOMEM;
 		
 	}
-	ssize_t bytes_read = 0;
+
+	ssize_t bytes_read=0;
+	
 	spin_lock_irqsave(&lock_sp, flags);
 	list_for_each_entry(proc, &list_head_mp1, list_head_struct) {
-		printk("list item pid=%d", proc->pid);
 		bytes_read += sprintf(kbuf + bytes_read, "%d: %lu\n", proc->pid, proc->time_use);
 		//
 		#ifdef DEBUG
 		printk("read %d: %lu\n", proc->pid, proc->time_use);
 		#endif
 		//
-		if (bytes_read >= size) {
+		if (bytes_read >= list_size * MAX_STR_LEN){
 			#ifdef DEBUG
 			printk("too many processes\n");
 			#endif
 			break;
 		}
+		
 	}
 	/*if(strlen(kernel_buf) + strlen(kbuf) + 1 > SZ){
 			printk(KERN_ALERT "proccess too much\n");
@@ -134,18 +141,25 @@ static ssize_t mp1_read(struct file *filp, char __user *user_buf, size_t size, l
 			strcat(kernel_buf, kbuf);
 	}*/
 	spin_unlock_irqrestore(&lock_sp, flags);
-	kfree(kbuf);
+	
 	//return bytes that could not be copied
-	remaining = copy_to_user(user_buf, kbuf, size);
+	if (bytes_read >= size){
+		bytes_read=size;
+		
+	}
+			
+	remaining = copy_to_user(user_buf, kbuf, bytes_read);
+	
 	if (remaining == size) {
 		pr_err("copy_to_user failed\n");
 		
 		return -EFAULT;
     }
-
-	size -= remaining;
-	*off = offset + size;
-	return size;
+	kfree(kbuf);
+	bytes_read -= remaining;
+	//size -= remaining;
+	*off = offset + bytes_read;
+	return bytes_read;
 }
 
 static ssize_t mp1_write(struct file *filp, const char __user *user_buf, size_t size, loff_t *off)
@@ -158,10 +172,8 @@ static ssize_t mp1_write(struct file *filp, const char __user *user_buf, size_t 
 	if (offset < 0)
 		return -EINVAL;
 
-	if (offset >= SZ || size == 0) {
+	if (offset >= SZ || size == 0)
 		return 0;
-	}
-		//return 0;
 
 	if (size > SZ - offset)
 		size = SZ - offset;
@@ -204,19 +216,17 @@ static ssize_t mp1_write(struct file *filp, const char __user *user_buf, size_t 
 	}
 
 	proc = kmalloc(sizeof(struct pid_time_struct), GFP_KERNEL);
-	//INIT_LIST_HEAD(&(proc->list_head_struct));
 
 	proc->pid = pid;
-	proc->time_use = 0;
+	//proc->time_use = 0;
 	//sscanf(kbuf, "%u", &proc->pid);
 
 	//proc->pid = (pid_t)simple_strtol(kbuf, NULL, 10);
-	/*
 	if(get_cpu_use((int)(proc->pid), &(proc->time_use)) != 0){
 		printk(KERN_ALERT "get_cpu_use error\n");
 		kfree(proc);
-		return -EINVAL;
-	}*/
+		return 0;
+	}
 	
 	spin_lock_irqsave(&lock_sp, flags);
 	list_add_tail(&proc->list_head_struct, &list_head_mp1);
@@ -224,7 +234,7 @@ static ssize_t mp1_write(struct file *filp, const char __user *user_buf, size_t 
 	
 
 	size -= remaining;
-	*off = offset + size;
+	
 	
 	kfree(kbuf);
 	return size;
